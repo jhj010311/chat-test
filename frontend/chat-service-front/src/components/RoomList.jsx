@@ -4,6 +4,7 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
     const [rooms, setRooms] = useState([]);
     const [newRoomName, setNewRoomName] = useState('');
     const [isCreating, setIsCreating] = useState(false);
+    const [notifications, setNotifications] = useState({}); // 새 메시지 알림 저장
 
     // 채팅방 목록 실시간 수신
     useEffect(() => {
@@ -15,6 +16,19 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
             setRooms(roomList);
         });
 
+        // 새 메시지 알림 구독
+        const notificationSubscription = stompClient.subscribe('/topic/rooms/notifications', (message) => {
+            const notification = JSON.parse(message.body);
+            setNotifications(prev => ({
+                ...prev,
+                [notification.roomId]: {
+                    lastMessage: notification.lastMessage,
+                    sender: notification.sender,
+                    timestamp: notification.timestamp
+                }
+            }));
+        });
+
         // 초기 채팅방 목록 요청
         stompClient.send('/app/rooms.list', {}, JSON.stringify({
             userId: user.id
@@ -22,6 +36,7 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
 
         return () => {
             if (subscription) subscription.unsubscribe();
+            if (notificationSubscription) notificationSubscription.unsubscribe();
         };
     }, [stompClient, user.id]);
 
@@ -124,6 +139,16 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
                                     <p style={{ margin: '0', color: '#666', fontSize: '14px' }}>
                                         생성자: {room.createdBy} | 참여자: {room.participantCount || 0}명
                                     </p>
+                                    {notifications[room.id] && (
+                                        <p style={{
+                                            margin: '5px 0 0 0',
+                                            color: '#007bff',
+                                            fontSize: '13px',
+                                            fontWeight: '500'
+                                        }}>
+                                            💬 {notifications[room.id].sender}: {notifications[room.id].lastMessage}
+                                        </p>
+                                    )}
                                     {room.createdAt && (
                                         <p style={{ margin: '5px 0 0 0', color: '#999', fontSize: '12px' }}>
                                             생성일: {new Date(room.createdAt).toLocaleString()}
