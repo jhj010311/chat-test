@@ -30,9 +30,12 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
         });
 
         // 초기 채팅방 목록 요청
-        stompClient.send('/app/rooms.list', {}, JSON.stringify({
-            userId: user.id
-        }));
+        stompClient.publish({
+            destination: '/app/rooms.list',
+            body: JSON.stringify({
+                userId: user.id
+            })
+        });
 
         return () => {
             if (subscription) subscription.unsubscribe();
@@ -45,11 +48,14 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
         if (!newRoomName.trim() || !stompClient) return;
 
         setIsCreating(true);
-        stompClient.send('/app/rooms.create', {}, JSON.stringify({
-            roomName: newRoomName.trim(),
-            createdBy: user.nickname,
-            userId: user.id
-        }));
+        stompClient.publish({
+            destination: '/app/rooms.create',
+            body: JSON.stringify({
+                roomName: newRoomName.trim(),
+                createdBy: user.nickname,
+                userId: user.id
+            })
+        });
 
         setNewRoomName('');
         setIsCreating(false);
@@ -59,11 +65,14 @@ const RoomList = ({ user, stompClient, onJoinRoom }) => {
         if (!stompClient) return;
 
         // 채팅방 참가 알림
-        stompClient.send('/app/rooms.join', {}, JSON.stringify({
-            roomId: room.id,
-            userId: user.id,
-            nickname: user.nickname
-        }));
+        stompClient.publish({
+            destination: '/app/rooms.join',
+            body: JSON.stringify({
+                roomId: room.id,
+                userId: user.id,
+                nickname: user.nickname
+            })
+        });
 
         onJoinRoom(room);
     };
