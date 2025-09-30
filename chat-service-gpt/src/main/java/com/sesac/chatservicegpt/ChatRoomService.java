@@ -40,7 +40,7 @@ public class ChatRoomService {
         }).collect(Collectors.toList());
     }
 
-    public void addParticipant(Long roomId, Long userId, String nickname) {
+    public boolean addParticipant(Long roomId, Long userId, String nickname) {
         // 재입장 가능 여부 확인
         if (!canRejoin(roomId, userId)) {
             throw new RuntimeException("재입장이 불가능한 사용자입니다.");
@@ -59,6 +59,7 @@ public class ChatRoomService {
             participant.setStatus(ParticipantStatus.ACTIVE);
             participant.setLeftAt(null);
             participantRepository.save(participant);
+            return false; // 재입장
         } else {
             // 최초 입장
             participantRepository.save(RoomParticipant.builder()
@@ -67,7 +68,14 @@ public class ChatRoomService {
                     .nickname(nickname)
                     .status(ParticipantStatus.ACTIVE)
                     .build());
+            return true; // 최초 입장
         }
+    }
+
+    // 이미 입장해 있는지 확인 (Redis 기준)
+    public boolean isAlreadyInRoom(Long roomId, Long userId) {
+        String key = ROOM_PARTICIPANTS_KEY + roomId;
+        return redisTemplate.opsForHash().hasKey(key, userId.toString());
     }
 
     // 일시 퇴장 처리 (Redis에서만 제거)

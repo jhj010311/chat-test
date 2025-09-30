@@ -6,12 +6,37 @@ const ChatRoom = ({ user, room, stompClient, onLeaveRoom }) => {
     const [participants, setParticipants] = useState([]);
     const [isCreator, setIsCreator] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const messagesEndRef = useRef(null);
+    const hasJoinedRef = useRef(false);
 
     // 메시지 자동 스크롤
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
+
+    useEffect(() => {
+        const loadChatHistory = async () => {
+            try {
+                const response = await fetch(
+                    `http://localhost:8080/api/chat/rooms/${room.id}/messages?limit=100`
+                );
+                const history = await response.json();
+
+                // ✅ timestamp를 Date 객체로 변환
+                setMessages(history.map(msg => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                })));
+            } catch (error) {
+                console.error('과거 메시지 로드 실패:', error);
+            } finally {
+                setIsLoadingHistory(false);
+            }
+        };
+
+        loadChatHistory();
+    }, [room.id]);
 
     useEffect(() => {
         scrollToBottom();
@@ -51,19 +76,22 @@ const ChatRoom = ({ user, room, stompClient, onLeaveRoom }) => {
             }]);
         });
 
-        // 입장 알림 전송
-        stompClient.publish({
-            destination: '/app/chat.join',
-            body: JSON.stringify({
-                roomId: room.id,
-                sender: user.nickname,
-                userId: user.id
-            })
-        });
+        // 입장 알림 전송 (중복 방지)
+        if (!hasJoinedRef.current) {
+            stompClient.publish({
+                destination: '/app/chat.join',
+                body: JSON.stringify({
+                    roomId: room.id,
+                    sender: user.nickname,
+                    userId: user.id
+                })
+            });
+            hasJoinedRef.current = true;
+        }
 
         return () => {
             // 퇴장 알림 전송
-            if (stompClient.connected) {
+            if (stompClient.connected && hasJoinedRef.current) {
                 stompClient.publish({
                     destination: '/app/chat.leave',
                     body: JSON.stringify({
@@ -72,6 +100,7 @@ const ChatRoom = ({ user, room, stompClient, onLeaveRoom }) => {
                         userId: user.id
                     })
                 });
+                hasJoinedRef.current = false;
             }
 
             messageSubscription?.unsubscribe();
@@ -219,61 +248,78 @@ const ChatRoom = ({ user, room, stompClient, onLeaveRoom }) => {
                     flexDirection: 'column',
                     gap: '10px'
                 }}>
-                    {messages.map((msg, index) => (
-                        <div
-                            key={index}
-                            style={{
-                                display: 'flex',
-                                flexDirection: msg.isSystem ? 'row' : (msg.sender === user.nickname ? 'row-reverse' : 'row'),
-                                alignItems: 'flex-start',
-                                gap: '8px'
-                            }}
-                        >
-                            {msg.isSystem ? (
-                                <div style={{
-                                    width: '100%',
-                                    textAlign: 'center',
-                                    padding: '8px',
-                                    backgroundColor: '#e9ecef',
-                                    borderRadius: '4px',
-                                    fontSize: '14px',
-                                    color: '#666'
-                                }}>
-                                    {msg.message}
-                                </div>
-                            ) : (
-                                <>
-                                    <div style={{
-                                        maxWidth: '70%',
-                                        padding: '10px 15px',
-                                        borderRadius: '18px',
-                                        backgroundColor: msg.sender === user.nickname ? '#007bff' : '#e9ecef',
-                                        color: msg.sender === user.nickname ? 'white' : 'black'
-                                    }}>
-                                        {msg.sender !== user.nickname && (
-                                            <div style={{
-                                                fontSize: '12px',
-                                                fontWeight: 'bold',
-                                                marginBottom: '4px',
-                                                opacity: 0.8
-                                            }}>
-                                                {msg.sender}
-                                            </div>
-                                        )}
-                                        <div>{msg.message}</div>
-                                        <div style={{
-                                            fontSize: '11px',
-                                            opacity: 0.7,
-                                            textAlign: msg.sender === user.nickname ? 'right' : 'left',
-                                            marginTop: '4px'
-                                        }}>
-                                            {formatTime(msg.timestamp)}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
+                    {isLoadingHistory ? (
+                        <div style={{
+                            textAlign: 'center',
+                            padding: '20px',
+                            color: '#666'
+                        }}>
+                            메시지를 불러오는 중...
                         </div>
-                    ))}
+                    ) : messages.length === 0 ? (
+                        <div style={{
+                            textAlign: 'center',
+                            padding: '20px',
+                            color: '#666'
+                        }}>
+                            아직 메시지가 없습니다. 첫 메시지를 보내보세요!
+                        </div>
+                    ) : (
+                        messages.map((msg, index) => (
+                            <div
+                                key={index}
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: msg.isSystem ? 'row' : (msg.sender === user.nickname ? 'row-reverse' : 'row'),
+                                    alignItems: 'flex-start',
+                                    gap: '8px'
+                                }}
+                            >
+                                {msg.isSystem ? (
+                                    <div style={{
+                                        width: '100%',
+                                        textAlign: 'center',
+                                        padding: '8px',
+                                        backgroundColor: '#e9ecef',
+                                        borderRadius: '4px',
+                                        fontSize: '14px',
+                                        color: '#666'
+                                    }}>
+                                        {msg.message}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{
+                                            maxWidth: '70%',
+                                            padding: '10px 15px',
+                                            borderRadius: '18px',
+                                            backgroundColor: msg.sender === user.nickname ? '#007bff' : '#e9ecef',
+                                            color: msg.sender === user.nickname ? 'white' : 'black'
+                                        }}>
+                                            {msg.sender !== user.nickname && (
+                                                <div style={{
+                                                    fontSize: '12px',
+                                                    fontWeight: 'bold',
+                                                    marginBottom: '4px',
+                                                    opacity: 0.8
+                                                }}>
+                                                    {msg.sender}
+                                                </div>
+                                            )}
+                                            <div>{msg.message}</div>
+                                            <div style={{
+                                                fontSize: '11px',
+                                                opacity: 0.7,
+                                                textAlign: msg.sender === user.nickname ? 'right' : 'left',
+                                                marginTop: '4px'
+                                            }}>
+                                                {formatTime(msg.timestamp)}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )))}
                     <div ref={messagesEndRef} />
                 </div>
 

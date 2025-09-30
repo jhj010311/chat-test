@@ -61,9 +61,22 @@ public class ChatController {
             return;
         }
 
+        // 이미 입장해 있는지 확인 (중복 입장 방지)
+        if (chatRoomService.isAlreadyInRoom(roomId, userId)) {
+            System.out.println("이미 입장한 사용자: " + userId + " in room: " + roomId);
+            return; // 시스템 메시지 전송하지 않음
+        }
+
         // Redis에 참여자 추가 + DB 기록
         try {
-            chatRoomService.addParticipant(roomId, userId, sender);
+            boolean isFirstJoin = chatRoomService.addParticipant(roomId, userId, sender);
+
+            // 최초 입장이거나 재입장인 경우만 시스템 메시지 전송
+            if (isFirstJoin) {
+                String systemMessage = sender + "님이 입장하셨습니다.";
+                messagingTemplate.convertAndSend("/topic/rooms/" + roomId + "/system",
+                        Map.of("message", systemMessage, "type", "JOIN"));
+            }
         } catch (RuntimeException e) {
             messagingTemplate.convertAndSendToUser(
                     userId.toString(),
@@ -72,11 +85,6 @@ public class ChatController {
             );
             return;
         }
-
-        // 시스템 메시지 전송
-        String systemMessage = sender + "님이 입장하셨습니다.";
-        messagingTemplate.convertAndSend("/topic/rooms/" + roomId + "/system",
-                Map.of("message", systemMessage, "type", "JOIN"));
 
         // 참여자 목록 업데이트 브로드캐스트
         broadcastParticipants(roomId);
